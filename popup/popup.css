@@ -1,0 +1,141 @@
+/* General Layout */
+body {
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica,
+    Arial, sans-serif;
+  margin: 0;
+  padding: 16px;
+  background: #f9f9f9;
+  color: #333;
+  width: 280px;
+}
+
+h1.title {
+  text-align: center;
+  font-size: 18px;
+  font-weight: 600;
+  margin: 0 0 16px 0;
+}
+
+/* Container */
+.container {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+/* Slider Section */
+.range {
+  width: 100%;
+  margin-top: 8px;
+  appearance: none;
+  height: 6px;
+  border-radius: 3px;
+  background: #ddd;
+  outline: none;
+}
+
+/* Custom Slider Thumb */
+.range::-webkit-slider-thumb {
+  appearance: none;
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  background: #4a90e2;
+  cursor: pointer;
+}
+
+.range::-moz-range-thumb {
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  background: #4a90e2;
+  cursor: pointer;
+}
+
+#currentValue {
+  font-weight: 600;
+  margin-top: 4px;
+  text-align: right;
+  color: #4a90e2;
+}
+
+/* Buttons */
+.btnContainer {
+  display: flex;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+button {
+  flex: 1;
+  padding: 8px 12px;
+  border: none;
+  border-radius: 6px;
+  font-size: 14px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: background 0.2s ease;
+  color: #fff;
+}
+
+#startBtn {
+  background: #28a745;
+}
+#startBtn:hover {
+  background: #218838;
+}
+
+#stopBtn {
+  background: #dc3545;
+}
+#stopBtn:hover {
+  background: #c82333;
+}
+#stopBtn:disabled {
+  background: #f5a9b8;
+  cursor: not-allowed;
+}
+
+#GroupNow {
+  background: #007bff;
+}
+#GroupNow:hover {
+  background: #0069d9;
+}
+
+/* Preferences */
+#preferenceCont {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 14px;
+  cursor: pointer;
+}
+
+#ungroupCheck {
+  cursor: pointer;
+}
+
+/* Status Section */
+#statusCont {
+  margin-top: 8px;
+  text-align: center;
+}
+
+#status {
+  font-size: 13px;
+  font-weight: 500;
+  color: #666;
+}
+
+#status.idle {
+  color: #6c757d;
+}
+
+#status.running {
+  color: #28a745;
+}
+
+#status.stopped {
+  color: #dc3545;
+}

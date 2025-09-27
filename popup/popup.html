@@ -1,0 +1,32 @@
+<header>
+  <h1 class="title">Tabflow</h1>
+</header>
+<section class="container">
+  <div>
+    <label for="inactive">inactive</label>
+    <input
+      type="range"
+      class="range"
+      min="1"
+      max="60"
+      value="30"
+      step="10"
+      id="inputValue"
+    />
+    <p id="currentValue"></p>
+  </div>
+  <div class="btnContainer">
+    <button id="startBtn">Start</button>
+    <button id="stopBtn" disabled>Stop</button>
+    <button id="GroupNow">Group Now</button>
+  </div>
+  <div id="preferenceCont">
+    <label for="checkbox">Ungroup when check</label>
+    <input type="checkbox" name="ungroup" id="ungroupCheck" />
+  </div>
+  <div id="statusCont">
+    <p id="status"></p>
+  </div>
+</section>
+<link rel="stylesheet" href="./popup.css" />
+<script src="./popup.js"></script>
