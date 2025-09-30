@@ -9,12 +9,12 @@ document.addEventListener("DOMContentLoaded", () => {
   const startBtn = document.getElementById("startBtn");
   const stopBtn = document.getElementById("stopBtn");
   const groupNowBtn = document.getElementById("GroupNow");
-  const ungroupCheckbox = document.getElementById("ungroupCheck");
+  const groupCheckbox = document.getElementById("groupCheck");
   const statusEl = document.getElementById("status");
 
   const STORAGE_KEYS = {
     minutes: "minutes",
-    autoUngroup: "autoUngroup",
+    autoGroup: "autoGroup",
   };
 
   // Accessibility: live announcements
@@ -22,7 +22,7 @@ document.addEventListener("DOMContentLoaded", () => {
 
   // Load saved settings when popup opens
   chrome.storage.local.get(
-    [STORAGE_KEYS.minutes, STORAGE_KEYS.autoUngroup],
+    [STORAGE_KEYS.minutes, STORAGE_KEYS.autoGroup],
     (data) => {
       if (data[STORAGE_KEYS.minutes]) {
         sliderEl.value = data[STORAGE_KEYS.minutes];
@@ -32,10 +32,10 @@ document.addEventListener("DOMContentLoaded", () => {
         displayEl.textContent = "30 mins";
       }
 
-      if (data[STORAGE_KEYS.autoUngroup] !== undefined) {
-        ungroupCheckbox.checked = data[STORAGE_KEYS.autoUngroup];
+      if (data[STORAGE_KEYS.autoGroup] !== undefined) {
+        groupCheckbox.checked = data[STORAGE_KEYS.autoGroup];
       } else {
-        ungroupCheckbox.checked = true;
+        groupCheckbox.checked = true;
       }
 
       setStatus("Idle", "idle");
@@ -56,10 +56,10 @@ document.addEventListener("DOMContentLoaded", () => {
   });
 
   // Save checkbox changes
-  ungroupCheckbox.addEventListener("change", () => {
-    const checked = ungroupCheckbox.checked;
-    chrome.storage.local.set({ [STORAGE_KEYS.autoUngroup]: checked }, () => {
-      setStatus(`Ungroup on click: ${checked ? "ON" : "OFF"}`, "idle");
+  groupCheckbox.addEventListener("change", () => {
+    const checked = groupCheckbox.checked;
+    chrome.storage.local.set({ [STORAGE_KEYS.autoGroup]: checked }, () => {
+      setStatus(`Group on click: ${checked ? "ON" : "OFF"}`, "idle");
       setTimeout(() => setStatus("Idle", "idle"), 1000);
     });
   });
@@ -79,7 +79,7 @@ document.addEventListener("DOMContentLoaded", () => {
     const msg = {
       type: "START",
       minutes,
-      autoUngroup: ungroupCheckbox.checked,
+      autoGroup: groupCheckbox.checked,
     };
 
     chrome.runtime.sendMessage(msg);
@@ -111,7 +111,7 @@ document.addEventListener("DOMContentLoaded", () => {
     const msg = {
       type: "GROUP_NOW",
       minutes: parseInt(sliderEl.value, 10),
-      autoUngroup: ungroupCheckbox.checked,
+      autoGroup: groupCheckbox.checked,
     };
 
     chrome.runtime.sendMessage(msg);

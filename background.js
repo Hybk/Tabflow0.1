@@ -1,14 +1,15 @@
 let timerId = null;
 let endTime = null;
 let currentMinutes = 0;
+let autoGroup = true;
 let autoUngroup = true;
 let focusedWindowId = null;
 
 let hiddenQueue = [];
 let hideIntervalId = null;
-const tabStates = {}; // { tabId: { lastAccessed, isHidden, isActive } }
+const tabStates = {};
 
-// ========== UTIL HELPERS ==========
+// UTIL HELPERS
 function clearTimer() {
   if (timerId) {
     clearTimeout(timerId);
@@ -27,12 +28,11 @@ function clearTimer() {
 function notifyPopup(message) {
   chrome.runtime.sendMessage(message, () => {
     if (chrome.runtime.lastError) {
-      // ignore if popup not open
     }
   });
 }
 
-// ========== GROUP INACTIVE TABS ==========
+//  GROUP INACTIVE TABS
 async function groupInactiveTabs(minutes) {
   try {
     const now = Date.now();
@@ -51,7 +51,7 @@ async function groupInactiveTabs(minutes) {
       }
     }
 
-    // Find inactive tabs (not active + idle for X mins)
+    // Find inactive tabs
     const inactiveTabs = tabs.filter((t) => {
       const state = tabStates[t.id];
       return (
@@ -111,8 +111,7 @@ async function groupInactiveTabs(minutes) {
       tabStates[t.id].isActive = false;
     });
 
-    // Start hiding process (2 tabs every 1 minute)
-    startHidingProcess();
+    // startHidingProcess();
 
     notifyPopup({
       type: "GROUPING_COMPLETE",
@@ -124,36 +123,36 @@ async function groupInactiveTabs(minutes) {
   }
 }
 
-// ========== HIDING PROCESS ==========
-function startHidingProcess() {
-  if (hideIntervalId) clearInterval(hideIntervalId);
+// HIDING PROCESS
+// function startHidingProcess() {
+//   if (hideIntervalId) clearInterval(hideIntervalId);
 
-  hideIntervalId = setInterval(async () => {
-    if (hiddenQueue.length === 0) {
-      console.log("[Hider] Queue empty, stopping...");
-      clearInterval(hideIntervalId);
-      hideIntervalId = null;
-      return;
-    }
+//   hideIntervalId = setInterval(async () => {
+//     if (hiddenQueue.length === 0) {
+//       console.log("[Hider] Queue empty, stopping...");
+//       clearInterval(hideIntervalId);
+//       hideIntervalId = null;
+//       return;
+//     }
 
-    const toHide = hiddenQueue.splice(0, 2);
-    try {
-      await chrome.tabs.hide(toHide);
-      toHide.forEach((id) => {
-        if (tabStates[id]) tabStates[id].isHidden = true;
-      });
-      console.log(`[Hider] Hidden tabs: ${toHide.join(", ")}`);
-    } catch (err) {
-      console.warn("[Hider] Error hiding tabs:", err.message);
-    }
-  }, 60 * 1000);
-}
+//     const toHide = hiddenQueue.splice(0, 2);
+//     try {
+//       await chrome.tabs.hide(toHide);
+//       toHide.forEach((id) => {
+//         if (tabStates[id]) tabStates[id].isHidden = true;
+//       });
+//       console.log(`[Hider] Hidden tabs: ${toHide.join(", ")}`);
+//     } catch (err) {
+//       console.warn("[Hider] Error hiding tabs:", err.message);
+//     }
+//   }, 60 * 1000);
+// }
 
-// ========== START/STOP ==========
-function handleStart(minutes, ungroup) {
+//  START/STOP
+function handleStart(minutes, group) {
   clearTimer();
   currentMinutes = minutes;
-  autoUngroup = ungroup;
+  autoGroup = group;
 
   endTime = Date.now() + minutes * 60 * 1000;
   console.log(`[Start] Timer set for ${minutes} min`);
@@ -178,7 +177,7 @@ async function handleGroupNow(minutes) {
   await groupInactiveTabs(minutes);
 }
 
-// ========== UNGROUP ==========
+//UNGROUP
 async function ungroupAllTabs() {
   try {
     const groups = await chrome.tabGroups.query({});
@@ -196,11 +195,11 @@ async function ungroupAllTabs() {
   }
 }
 
-// ========== LISTENERS ==========
+//  LISTENERS
 chrome.runtime.onMessage.addListener((msg) => {
   switch (msg.type) {
     case "START":
-      handleStart(msg.minutes, msg.autoUngroup);
+      handleStart(msg.minutes, msg.autoGroup);
       break;
     case "STOP":
       handleStop();
@@ -218,17 +217,56 @@ chrome.windows.onFocusChanged.addListener((windowId) => {
   console.log("[Window Focus] Changed to", windowId);
 });
 
-// When tab is activated → mark active + show it
 chrome.tabs.onActivated.addListener(async (info) => {
   const tabId = info.tabId;
-  if (tabStates[tabId]) {
-    tabStates[tabId].isActive = true;
-    tabStates[tabId].lastAccessed = Date.now();
-  }
+
   try {
-    await chrome.tabs.show(tabId);
-    console.log(`[Tab Active] Tab ${tabId} is now active and shown`);
-  } catch {}
+    // 1) update local state
+    if (tabStates[tabId]) {
+      tabStates[tabId].isActive = true;
+      tabStates[tabId].lastAccessed = Date.now();
+      tabStates[tabId].isHidden = false;
+    }
+
+    // try {
+    //   await chrome.tabs.show(tabId);
+    //   console.log(`[Tab Active] Tab ${tabId} is now active and shown`);
+    // } catch (e) {
+    // }
+
+    // 3) remove from the hiding queue if present prevent later re-hide
+    const qIdx = hiddenQueue.indexOf(tabId);
+    if (qIdx !== -1) hiddenQueue.splice(qIdx, 1);
+    if (autoUngroup) {
+      try {
+        const tab = await chrome.tabs.get(tabId);
+        const groupId = tab.groupId;
+        if (groupId && groupId !== -1) {
+          // get group info and check title
+          const group = await chrome.tabGroups.get(groupId);
+          if (group && group.title === "Inactive Tabs") {
+            // ungroup this single tab
+            await chrome.tabs.ungroup([tabId]);
+
+            // collapse the group if it still has tabs
+            const remaining = await chrome.tabs.query({ groupId });
+            if (remaining.length > 0) {
+              await chrome.tabGroups.update(groupId, { collapsed: true });
+            }
+            console.log(
+              `[Ungroup] Tab ${tabId} removed from "Inactive Tabs"; group ${groupId} collapsed`
+            );
+          }
+        }
+      } catch (err) {
+        console.warn("[Ungroup] error handling activated tab:", err.message);
+      }
+    }
+
+    console.log(`[Tab Active] Tab ${tabId} activated and shown`);
+  } catch (err) {
+    console.warn("[Tab Active] handler error:", err.message);
+  }
 });
 
 chrome.runtime.onSuspend.addListener(() => {
