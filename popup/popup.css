@@ -1,19 +1,20 @@
 /* General Layout */
 body {
-  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica,
-    Arial, sans-serif;
+  font-family: Inter, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto,
+    sans-serif;
   margin: 0;
   padding: 16px;
-  background: #f9f9f9;
-  color: #333;
-  width: 280px;
+  background: #fdfdfd;
+  color: #111;
+  width: 320px;
 }
 
 h1.title {
   text-align: center;
-  font-size: 18px;
+  font-size: 20px;
   font-weight: 600;
-  margin: 0 0 16px 0;
+  margin-bottom: 16px;
+  color: #0f172a;
 }
 
 /* Container */
@@ -23,119 +24,158 @@ h1.title {
   gap: 16px;
 }
 
-/* Slider Section */
+/* Card Sections */
+.card {
+  background: #fff;
+  border: 1px solid #e5e7eb;
+  border-radius: 12px;
+  padding: 12px;
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.05);
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.label {
+  font-size: 13px;
+  font-weight: 500;
+  color: #374151;
+}
+
+.value {
+  font-size: 13px;
+  font-weight: 600;
+  color: #2563eb;
+  text-align: right;
+}
+
+/* Slider */
 .range {
   width: 100%;
-  margin-top: 8px;
   appearance: none;
   height: 6px;
-  border-radius: 3px;
-  background: #ddd;
+  border-radius: 9999px;
+  background: #e5e7eb;
   outline: none;
 }
 
-/* Custom Slider Thumb */
 .range::-webkit-slider-thumb {
   appearance: none;
-  width: 14px;
-  height: 14px;
+  width: 16px;
+  height: 16px;
   border-radius: 50%;
-  background: #4a90e2;
+  background: #2563eb;
+  border: 2px solid #fff;
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.2);
   cursor: pointer;
 }
-
 .range::-moz-range-thumb {
-  width: 14px;
-  height: 14px;
+  width: 16px;
+  height: 16px;
   border-radius: 50%;
-  background: #4a90e2;
+  background: #2563eb;
+  border: 2px solid #fff;
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.2);
   cursor: pointer;
 }
 
-#currentValue {
-  font-weight: 600;
-  margin-top: 4px;
-  text-align: right;
-  color: #4a90e2;
+/* Number Input */
+input[type="number"] {
+  padding: 6px 10px;
+  border: 1px solid #e5e7eb;
+  border-radius: 6px;
+  font-size: 14px;
+  font-weight: 500;
+  color: #374151;
+  width: 100%;
+  box-sizing: border-box;
+}
+
+input[type="number"]:focus {
+  outline: none;
+  border-color: #2563eb;
+  box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.1);
 }
 
 /* Buttons */
 .btnContainer {
-  display: flex;
-  justify-content: space-between;
-  gap: 8px;
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 10px;
 }
 
 button {
-  flex: 1;
-  padding: 8px 12px;
+  padding: 10px 12px;
   border: none;
-  border-radius: 6px;
+  border-radius: 8px;
   font-size: 14px;
   font-weight: 500;
   cursor: pointer;
-  transition: background 0.2s ease;
+  transition: all 0.2s ease;
   color: #fff;
-}
-
-#startBtn {
-  background: #28a745;
-}
-#startBtn:hover {
-  background: #218838;
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.05);
 }
 
 #stopBtn {
-  background: #dc3545;
+  background: #ef4444;
 }
-#stopBtn:hover {
-  background: #c82333;
+#stopBtn:hover:not(:disabled) {
+  background: #dc2626;
 }
 #stopBtn:disabled {
-  background: #f5a9b8;
+  background: #fca5a5;
   cursor: not-allowed;
+  opacity: 0.6;
 }
 
 #GroupNow {
-  background: #007bff;
+  background: #3b82f6;
 }
 #GroupNow:hover {
-  background: #0069d9;
+  background: #2563eb;
+  transform: translateY(-1px);
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
 }
 
 /* Preferences */
-#preferenceCont {
-  display: flex;
+.preference {
+  flex-direction: row;
+  justify-content: space-between;
   align-items: center;
-  gap: 8px;
-  font-size: 14px;
-  cursor: pointer;
 }
 
-#ungroupCheck {
+input[type="checkbox"] {
+  width: 18px;
+  height: 18px;
   cursor: pointer;
+  accent-color: #2563eb;
 }
 
 /* Status Section */
 #statusCont {
-  margin-top: 8px;
   text-align: center;
+  background: linear-gradient(135deg, #f8fafc 0%, #f1f5f9 100%);
+  border: 1px solid #e2e8f0;
 }
 
 #status {
-  font-size: 13px;
-  font-weight: 500;
-  color: #666;
+  font-size: 14px;
+  font-weight: 600;
+  margin: 0;
 }
 
 #status.idle {
-  color: #6c757d;
+  color: #6b7280;
 }
 
 #status.running {
-  color: #28a745;
+  color: #22c55e;
 }
 
 #status.stopped {
-  color: #dc3545;
+  color: #ef4444;
+}
+
+#status.error {
+  color: #f59e0b;
 }

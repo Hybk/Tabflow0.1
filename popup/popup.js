@@ -1,16 +1,15 @@
-// Popup UI logic for Tabflow
 let isRunning = false;
-let startDebounce = false;
 
 document.addEventListener("DOMContentLoaded", () => {
   // Query DOM elements
   const sliderEl = document.getElementById("inputValue");
   const displayEl = document.getElementById("currentValue");
-  const startBtn = document.getElementById("startBtn");
   const stopBtn = document.getElementById("stopBtn");
   const groupNowBtn = document.getElementById("GroupNow");
   const groupCheckbox = document.getElementById("groupCheck");
   const statusEl = document.getElementById("status");
+  const statusDescEl = document.getElementById("statusDesc");
+  const minTabsEl = document.getElementById("minTabs");
 
   const STORAGE_KEYS = {
     minutes: "minutes",
@@ -22,7 +21,7 @@ document.addEventListener("DOMContentLoaded", () => {
 
   // Load saved settings when popup opens
   chrome.storage.local.get(
-    [STORAGE_KEYS.minutes, STORAGE_KEYS.autoGroup],
+    [STORAGE_KEYS.minutes, STORAGE_KEYS.autoGroup, "minGroupTabs"],
     (data) => {
       if (data[STORAGE_KEYS.minutes]) {
         sliderEl.value = data[STORAGE_KEYS.minutes];
@@ -38,11 +37,59 @@ document.addEventListener("DOMContentLoaded", () => {
         groupCheckbox.checked = true;
       }
 
-      setStatus("Idle", "idle");
+      if (data.minGroupTabs !== undefined) {
+        minTabsEl.value = data.minGroupTabs;
+      } else {
+        minTabsEl.value = 5;
+      }
+
+      // Sync with background script state
+      chrome.runtime.sendMessage({ type: "GET_STATUS" }, (response) => {
+        if (chrome.runtime.lastError) {
+          setStatus("Idle", "idle");
+          return;
+        }
+
+        if (response && response.isRunning) {
+          isRunning = true;
+          stopBtn.disabled = false;
+
+          const remainingMs = response.endTime - Date.now();
+          const remainingMins = Math.ceil(remainingMs / 60000);
+
+          // Check for stuck timer
+          if (remainingMins <= 0 && response.endTime) {
+            console.warn("[Popup] Detected stuck timer, attempting recovery");
+            chrome.runtime.sendMessage({ type: "FORCE_RESET" });
+            setStatus("🔄 Recovering...", "idle", "System reset");
+            setTimeout(() => {
+              isRunning = false;
+              stopBtn.disabled = true;
+              setStatus("Idle", "idle", "Auto-starts at 10+ tabs");
+            }, 1000);
+          } else if (remainingMins > 0) {
+            setStatus(
+              `⏳ Timer Active`,
+              "running",
+              `${remainingMins} min remaining`
+            );
+          } else {
+            setStatus(
+              "⏳ Timer Active",
+              "running",
+              "Checking inactive tabs..."
+            );
+          }
+        } else {
+          isRunning = false;
+          stopBtn.disabled = true;
+          setStatus("Idle", "idle", "Auto-starts at 10+ tabs");
+        }
+      });
     }
   );
 
-  // Save slider live changes
+  // Auto-save slider changes
   sliderEl.addEventListener("input", () => {
     displayEl.textContent = sliderEl.value + " mins";
   });
@@ -50,128 +97,147 @@ document.addEventListener("DOMContentLoaded", () => {
   sliderEl.addEventListener("change", () => {
     const value = parseInt(sliderEl.value, 10);
     chrome.storage.local.set({ [STORAGE_KEYS.minutes]: value }, () => {
-      setStatus(`Saved: ${value} mins`, "idle");
-      setTimeout(() => setStatus("Idle", "idle"), 1000);
+      setStatus(`Saved`, "idle", `Timeout: ${value} mins`);
+      setTimeout(() => {
+        setStatus(
+          isRunning ? "Timer Active" : "Idle",
+          isRunning ? "running" : "idle",
+          isRunning ? "Auto-grouping enabled" : "Auto-starts at 10+ tabs"
+        );
+      }, 1500);
     });
   });
 
-  // Save checkbox changes
+  // Auto-save min tabs changes
+  minTabsEl.addEventListener("change", () => {
+    const value = parseInt(minTabsEl.value, 10);
+    if (value >= 1 && value <= 20) {
+      chrome.storage.local.set({ minGroupTabs: value }, () => {
+        setStatus("Saved", "idle", `Min tabs: ${value}`);
+        setTimeout(() => {
+          setStatus(
+            isRunning ? "Timer Active" : "Idle",
+            isRunning ? "running" : "idle",
+            isRunning ? "Auto-grouping enabled" : "Auto-starts at 10+ tabs"
+          );
+        }, 1500);
+      });
+    }
+  });
+
+  // Auto-save checkbox changes
   groupCheckbox.addEventListener("change", () => {
     const checked = groupCheckbox.checked;
     chrome.storage.local.set({ [STORAGE_KEYS.autoGroup]: checked }, () => {
-      setStatus(`Group on click: ${checked ? "ON" : "OFF"}`, "idle");
-      setTimeout(() => setStatus("Idle", "idle"), 1000);
+      setStatus("Saved", "idle", `Auto-group: ${checked ? "ON" : "OFF"}`);
+      setTimeout(() => {
+        setStatus(
+          isRunning ? "Timer Active" : "Idle",
+          isRunning ? "running" : "idle",
+          isRunning ? "Auto-grouping enabled" : "Auto-starts at 10+ tabs"
+        );
+      }, 1500);
     });
   });
 
-  // START BUTTON
-  startBtn.addEventListener("click", () => {
-    if (startDebounce || isRunning) return;
-    const minutes = parseInt(sliderEl.value, 10);
-
-    if (isNaN(minutes) || minutes < 1) {
-      setStatus("⚠️ Choose at least 1 minute", "error");
-      return;
-    }
-
-    startDebounce = true;
-
-    const msg = {
-      type: "START",
-      minutes,
-      autoGroup: groupCheckbox.checked,
-    };
-
-    chrome.runtime.sendMessage(msg);
-
-    // Optimistic UI update
-    startBtn.disabled = true;
-    stopBtn.disabled = false;
-    isRunning = true;
-    setStatus(`⏳ Timer started — will group after ${minutes} mins`, "running");
-
-    setTimeout(() => {
-      startDebounce = false;
-    }, 500);
-  });
-
-  // STOP BUTTON
+  // STOP BUTTON (only stops the timer, doesn't prevent auto-restart)
   stopBtn.addEventListener("click", () => {
     chrome.runtime.sendMessage({ type: "STOP" });
 
-    // Update UI immediately
-    startBtn.disabled = false;
     stopBtn.disabled = true;
     isRunning = false;
-    setStatus("🛑 Stopped", "stopped");
+    setStatus("🛑 Timer Stopped", "stopped", "Will auto-restart at 10+ tabs");
+
+    setTimeout(() => {
+      setStatus("Idle", "idle", "Auto-starts at 10+ tabs");
+    }, 2000);
   });
 
-  //  GROUP NOW BUTTON
+  // GROUP NOW BUTTON
   groupNowBtn.addEventListener("click", () => {
-    const msg = {
+    const minutes = parseInt(sliderEl.value, 10);
+
+    chrome.runtime.sendMessage({
       type: "GROUP_NOW",
-      minutes: parseInt(sliderEl.value, 10),
-      autoGroup: groupCheckbox.checked,
-    };
+      minutes: minutes,
+    });
 
-    chrome.runtime.sendMessage(msg);
-
-    // Temporary busy state
-    setStatus("📂 Grouping now...", "running");
+    setStatus("📂 Grouping...", "running", "Please wait");
     setTimeout(() => {
       setStatus(
-        isRunning ? "⏳ Running..." : "Idle",
-        isRunning ? "running" : "idle"
+        isRunning ? "Timer Active" : "Idle",
+        isRunning ? "running" : "idle",
+        isRunning ? "Auto-grouping enabled" : "Auto-starts at 10+ tabs"
       );
-    }, 1500);
+    }, 2000);
   });
 
   // RECEIVE MESSAGES FROM BACKGROUND
   chrome.runtime.onMessage.addListener((message) => {
     console.log("Popup received:", message);
-    startDebounce = false;
 
     switch (message.type) {
       case "TIMER_STARTED":
         isRunning = true;
-        startBtn.disabled = true;
         stopBtn.disabled = false;
-        setStatus("⏳ Timer started", "running");
+        setStatus("⏳ Timer Active", "running", "Auto-grouping enabled");
         break;
 
       case "NOT_ENOUGH_TABS":
-        isRunning = false;
-        startBtn.disabled = false;
-        stopBtn.disabled = true;
-        setStatus("⚠️ Not enough tabs — need more than 5", "error");
+        setStatus(
+          `ℹ️ Not Enough Tabs`,
+          "idle",
+          `Need ${message.required}+ inactive tabs`
+        );
+        setTimeout(() => {
+          setStatus(
+            isRunning ? "Timer Active" : "Idle",
+            isRunning ? "running" : "idle",
+            isRunning ? "Auto-grouping enabled" : "Auto-starts at 10+ tabs"
+          );
+        }, 3000);
         break;
 
       case "GROUPING_STARTED":
-        setStatus("📂 Grouping...", "running");
+        setStatus("📂 Grouping Tabs...", "running", "Please wait");
         break;
 
       case "GROUPING_COMPLETE":
-        isRunning = false;
-        startBtn.disabled = false;
-        stopBtn.disabled = true;
-        setStatus(
-          `✅ Grouped ${message.grouped} tabs (skipped ${message.skipped})`,
-          "idle"
-        );
+        const msg = `✅ Grouped ${message.grouped} tab${
+          message.grouped !== 1 ? "s" : ""
+        }`;
+        setStatus(msg, "idle", "Auto-starts at 10+ tabs");
+        setTimeout(() => {
+          setStatus(
+            isRunning ? "Timer Active" : "Idle",
+            isRunning ? "running" : "idle",
+            isRunning ? "Auto-grouping enabled" : "Auto-starts at 10+ tabs"
+          );
+        }, 3000);
         break;
 
       case "STOPPED":
         isRunning = false;
-        startBtn.disabled = false;
         stopBtn.disabled = true;
-        setStatus("🛑 Stopped", "stopped");
+        setStatus(
+          "🛑 Timer Stopped",
+          "stopped",
+          "Will auto-restart at 10+ tabs"
+        );
+        setTimeout(() => {
+          setStatus("Idle", "idle", "Auto-starts at 10+ tabs");
+        }, 2000);
         break;
 
       case "ERROR":
-        isRunning = false;
-        startBtn.disabled = false;
-        stopBtn.disabled = true;
-        setStatus(`❌ Error: ${message.message}`, "error");
+        setStatus(`⚠️ Error`, "error", message.message);
+        setTimeout(() => {
+          setStatus(
+            isRunning ? "Timer Active" : "Idle",
+            isRunning ? "running" : "idle",
+            isRunning ? "Auto-grouping enabled" : "Auto-starts at 10+ tabs"
+          );
+        }, 3000);
         break;
 
       default:
@@ -179,10 +245,14 @@ document.addEventListener("DOMContentLoaded", () => {
     }
   });
 
-  // Helper to update status with class
-  function setStatus(text, state) {
+  // Helper to update status with description
+  function setStatus(text, state, description = "") {
     statusEl.textContent = text;
     statusEl.className = ""; // reset
     if (state) statusEl.classList.add(state);
+
+    if (description) {
+      statusDescEl.textContent = description;
+    }
   }
 });
