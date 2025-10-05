@@ -378,7 +378,14 @@ chrome.alarms.onAlarm.addListener(async (alarm) => {
   if (alarm.name === "autoChecker") {
     try {
       const allTabs = await chrome.tabs.query({});
-      const countableTabs = allTabs.filter((t) => !t.pinned && !t.audible);
+      // Only count tabs that are NOT in any group, NOT pinned, and NOT audible
+      const countableTabs = allTabs.filter((t) => {
+        return (
+          !t.pinned && // Exclude pinned tabs
+          !t.audible && // Exclude tabs playing audio
+          (t.groupId === -1 || t.groupId === undefined) // Exclude ALL grouped tabs
+        );
+      });
 
       const stored = await chrome.storage.local.get([
         "minutes",
@@ -388,19 +395,21 @@ chrome.alarms.onAlarm.addListener(async (alarm) => {
       const minGroupTabs = stored.minGroupTabs || 5;
 
       console.log(
-        `[AutoChecker] Tabs: ${countableTabs.length}, running: ${isRunning}`
+        `[AutoChecker] Ungrouped tabs: ${countableTabs.length}, running: ${isRunning}`
       );
 
-      // Auto-start when >= 10 tabs
+      // Auto-start when >= 10 ungrouped tabs
       if (countableTabs.length >= 10 && !isRunning) {
-        console.log("[AutoChecker] ≥10 tabs detected. Auto-starting timer...");
+        console.log(
+          "[AutoChecker] ≥10 ungrouped tabs detected. Auto-starting timer..."
+        );
         autoStartTimer(minutes);
       }
 
-      // Auto-stop when < minGroupTabs (default 5)
+      // Auto-stop when < minGroupTabs ungrouped tabs (default 5)
       if (countableTabs.length < minGroupTabs && isRunning) {
         console.log(
-          `[AutoChecker] <${minGroupTabs} tabs detected. Auto-stopping...`
+          `[AutoChecker] <${minGroupTabs} ungrouped tabs detected. Auto-stopping...`
         );
         autoStopTimer();
       }
