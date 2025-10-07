@@ -4,55 +4,182 @@
     <link rel="stylesheet" href="./popup.css" />
   </head>
   <body>
-    <header>
-      <h1 class="title">TabFlow</h1>
-    </header>
+    <!-- Onboarding Screen -->
+    <div id="onboarding" class="onboarding">
+      <div class="onboarding-content">
+        <div class="onboarding-step active" data-step="1">
+          <div class="onboarding-icon">
+            <img src="../icons/rocket.png" alt="rocket" srcset="" />
+          </div>
+          <h2>Welcome to TabFlow!</h2>
+          <p>Auto-organize your tabs and keep your browser clean</p>
+          <button class="onboarding-btn" data-action="next">Get Started</button>
+        </div>
 
-    <section class="container">
-      <!-- Status -->
-      <div id="statusCont" class="card">
-        <p id="status" class="idle">Idle</p>
-        <p
-          id="statusDesc"
-          style="font-size: 12px; color: #6b7280; margin-top: 4px"
-        >
-          Auto-starts at 10+ tabs
-        </p>
-      </div>
+        <div class="onboarding-step" data-step="2">
+          <div class="onboarding-icon">
+            <img src="../icons/clock.png" alt="clock" srcset="" />
+          </div>
+          <h2>Auto-Grouping</h2>
+          <p>
+            TabFlow automatically groups inactive tabs after they haven't been
+            used for a set time
+          </p>
+          <button class="onboarding-btn" data-action="next">Next</button>
+        </div>
 
-      <!-- Inactive Slider -->
-      <div class="card">
-        <label for="inactive" class="label">Inactive Timeout (mins)</label>
-        <input
-          type="range"
-          class="range"
-          min="1"
-          max="60"
-          value="30"
-          step="5"
-          id="inputValue"
-        />
-        <p id="currentValue" class="value"></p>
-      </div>
+        <div class="onboarding-step" data-step="3">
+          <div class="onboarding-icon">
+            <img src="../icons/target.png" alt="target" srcset="" />
+          </div>
+          <h2>Smart Detection</h2>
+          <p>
+            The timer auto-starts when you have 10+ tabs and stops when you're
+            below 5 tabs
+          </p>
+          <button class="onboarding-btn" data-action="next">Next</button>
+        </div>
 
-      <!-- Min Tabs -->
-      <div class="card">
-        <label for="minTabs" class="label">Minimum Inactive Tabs</label>
-        <input type="number" id="minTabs" min="1" max="20" value="5" />
-      </div>
+        <div class="onboarding-step" data-step="4">
+          <div class="onboarding-icon">
+            <img src="../icons/star.png" alt="star" />
+          </div>
+          <h2>You're All Set!</h2>
+          <p>
+            TabFlow is now monitoring your tabs. Customize settings anytime from
+            the popup
+          </p>
+          <button class="onboarding-btn primary" data-action="complete">
+            Start Using TabFlow
+          </button>
+        </div>
 
-      <!-- Buttons -->
-      <div class="btnContainer">
-        <button id="GroupNow">Group Now</button>
-        <button id="stopBtn" disabled>Stop Timer</button>
+        <div class="onboarding-dots">
+          <span class="dot active" data-dot="1"></span>
+          <span class="dot" data-dot="2"></span>
+          <span class="dot" data-dot="3"></span>
+          <span class="dot" data-dot="4"></span>
+        </div>
       </div>
+    </div>
 
-      <!-- Preferences -->
-      <div class="card preference">
-        <label for="groupCheck" class="label">Enable Auto Group</label>
-        <input type="checkbox" name="group" id="groupCheck" checked />
-      </div>
-    </section>
+    <!-- Main Popup -->
+    <div id="mainPopup" class="main-popup">
+      <!-- Header -->
+      <header class="header">
+        <div class="header-left">
+          <h1 class="title">TabFlow</h1>
+        </div>
+        <div class="header-right">
+          <div class="stat-badge">
+            <span class="stat-icon">
+              <img src="../icons/folder.png" alt="folder"
+            /></span>
+            <span class="stat-value" id="inactiveCount">0</span>
+          </div>
+        </div>
+      </header>
+
+      <section class="container">
+        <!-- Status -->
+        <div class="card status-card">
+          <div class="status-indicator">
+            <div class="status-dot" id="statusDot"></div>
+            <p id="status" class="idle">Idle</p>
+          </div>
+          <p id="statusDesc" class="status-desc">Auto-starts at 10+ tabs</p>
+        </div>
+
+        <!-- Inactive Slider -->
+        <div class="card">
+          <div class="card-header">
+            <label for="inactive" class="label">
+              <span class="label-icon"
+                ><img src="../icons/clock (1).png" alt=""
+              /></span>
+              Inactive Timeout
+            </label>
+            <span id="currentValue" class="value">30 mins</span>
+          </div>
+          <div class="slider-container">
+            <input
+              type="range"
+              class="range"
+              min="1"
+              max="60"
+              value="30"
+              step="5"
+              id="inputValue"
+            />
+          </div>
+          <div class="range-labels">
+            <span>1 min</span>
+            <span>60 min</span>
+          </div>
+        </div>
+
+        <!-- Min Tabs -->
+        <div class="card">
+          <div class="card-header">
+            <label for="minTabs" class="label">
+              <span class="label-icon"
+                ><img src="../icons/target (1).png" alt=""
+              /></span>
+              Minimum Inactive Tabs
+            </label>
+          </div>
+          <input
+            type="number"
+            id="minTabs"
+            min="1"
+            max="20"
+            value="5"
+            class="input-number"
+          />
+          <p class="helper-text">Minimum tabs needed before grouping</p>
+        </div>
+
+        <!-- Buttons -->
+        <div class="btnContainer">
+          <button id="GroupNow" class="btn btn-primary">
+            <span class="btn-icon"
+              ><img src="../icons/folder (1).png" alt=""
+            /></span>
+            Group Now
+          </button>
+          <button id="stopBtn" class="btn btn-secondary" disabled>
+            <span class="btn-icon"
+              ><img src="../icons/forbidden.png" alt=""
+            /></span>
+            Stop Timer
+          </button>
+        </div>
+
+        <!-- Preferences -->
+        <div class="card preference">
+          <div class="preference-content">
+            <div class="preference-left">
+              <span class="label-icon"
+                ><img src="../icons/cogwheel.png" alt=""
+              /></span>
+              <label for="groupCheck" class="label">Enable Auto Group</label>
+            </div>
+            <label class="toggle">
+              <input type="checkbox" name="group" id="groupCheck" checked />
+              <span class="toggle-slider"></span>
+            </label>
+          </div>
+        </div>
+
+        <!-- Footer -->
+        <div class="footer">
+          <p class="footer-text">
+            Made with <img src="../icons/heart (1).png" alt="" /> for productive
+            browsing
+          </p>
+        </div>
+      </section>
+    </div>
 
     <script src="./popup.js"></script>
   </body>
