@@ -2,9 +2,9 @@
 
 Automatically organize your browser tabs by grouping inactive ones, keeping your workspace clean and organized.
 
-![Show Image](./icons/image.png)
-![Show Image](./icons/imgTab.png)
-![Show Image](./icons/imgTab%202.png)
+![Show Image](./img/image.png)
+![Show Image](./img/imgTab.png)
+![Show Image](./img/imgTab%202.png)
 
 ---
 
