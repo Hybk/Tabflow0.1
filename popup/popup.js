@@ -4,14 +4,37 @@ let currentStep = 1;
 // Update inactive tab count in header
 async function updateInactiveCount() {
   try {
-    const groupId = await getInactiveGroupId();
+    const sessionData = await chrome.storage.local.get("sessionReady");
+    if (!sessionData.sessionReady) {
+      console.log("[Popup] Session not ready, skipping count update");
+      const countEl = document.getElementById("inactiveCount");
+      if (countEl) countEl.textContent = "0";
+      return;
+    }
+
+    // First try to find the group by name
+    let groupId = null;
+    try {
+      const groups = await chrome.tabGroups.query({});
+      const inactiveGroup = groups.find((g) => g.title === "Inactive Tabs");
+
+      if (inactiveGroup) {
+        groupId = inactiveGroup.id;
+      } else {
+        // Fallback to stored ID
+        groupId = await getInactiveGroupId();
+      }
+    } catch (err) {
+      console.warn("Error finding group:", err);
+      groupId = await getInactiveGroupId();
+    }
+
     if (groupId) {
       const tabs = await chrome.tabs.query({ groupId: groupId });
       const countEl = document.getElementById("inactiveCount");
       if (countEl) {
         countEl.textContent = tabs.length;
 
-        // Add animation
         countEl.style.transform = "scale(1.3)";
         setTimeout(() => {
           countEl.style.transform = "scale(1)";
@@ -25,6 +48,8 @@ async function updateInactiveCount() {
     }
   } catch (err) {
     console.warn("Error updating inactive count:", err);
+    const countEl = document.getElementById("inactiveCount");
+    if (countEl) countEl.textContent = "0";
   }
 }
 
@@ -43,7 +68,6 @@ function initOnboarding() {
     return;
   }
 
-  // Add event listeners to onboarding buttons
   const onboardingBtns = onboardingEl.querySelectorAll(".onboarding-btn");
   onboardingBtns.forEach((btn) => {
     btn.addEventListener("click", function () {
@@ -82,16 +106,16 @@ function completeOnboarding() {
     if (onboardingEl) onboardingEl.classList.add("hidden");
     if (mainPopupEl) mainPopupEl.style.display = "block";
 
-    updateInactiveCount();
+    setTimeout(() => {
+      updateInactiveCount();
+    }, 500);
   });
 }
 
 document.addEventListener("DOMContentLoaded", () => {
-  // Initialize onboarding
   initOnboarding();
 
-  // Check if onboarding is complete
-  chrome.storage.local.get("onboardingComplete", (data) => {
+  chrome.storage.local.get(["onboardingComplete", "sessionReady"], (data) => {
     const onboardingEl = document.getElementById("onboarding");
     const mainPopupEl = document.getElementById("mainPopup");
 
@@ -101,11 +125,16 @@ document.addEventListener("DOMContentLoaded", () => {
     } else {
       if (onboardingEl) onboardingEl.classList.add("hidden");
       if (mainPopupEl) mainPopupEl.style.display = "block";
-      updateInactiveCount();
+
+      if (data.sessionReady) {
+        // Wait a bit longer for group validation to complete
+        setTimeout(() => {
+          updateInactiveCount();
+        }, 800);
+      }
     }
   });
 
-  // Query DOM elements
   const sliderEl = document.getElementById("inputValue");
   const displayEl = document.getElementById("currentValue");
   const stopBtn = document.getElementById("stopBtn");
@@ -120,82 +149,114 @@ document.addEventListener("DOMContentLoaded", () => {
     autoGroup: "autoGroup",
   };
 
-  // Accessibility: live announcements
   if (statusEl) {
     statusEl.setAttribute("aria-live", "polite");
   }
 
-  // Load saved settings when popup opens
   chrome.storage.local.get(
-    [STORAGE_KEYS.minutes, STORAGE_KEYS.autoGroup, "minGroupTabs"],
+    [
+      STORAGE_KEYS.minutes,
+      STORAGE_KEYS.autoGroup,
+      "minGroupTabs",
+      "sessionReady",
+    ],
     (data) => {
-      if (data[STORAGE_KEYS.minutes]) {
-        sliderEl.value = data[STORAGE_KEYS.minutes];
-        displayEl.textContent = data[STORAGE_KEYS.minutes] + " mins";
-      } else {
-        sliderEl.value = 30;
-        displayEl.textContent = "30 mins";
+      if (!data.sessionReady) {
+        console.log("[Popup] Session not ready yet, waiting...");
+        setStatus("🔄 Starting...", "idle", "Initializing extension");
+
+        setTimeout(() => {
+          chrome.storage.local.get("sessionReady", (d) => {
+            if (d.sessionReady) {
+              initializePopupState(data);
+            }
+          });
+        }, 1000);
+        return;
       }
 
-      if (data[STORAGE_KEYS.autoGroup] !== undefined) {
-        groupCheckbox.checked = data[STORAGE_KEYS.autoGroup];
-      } else {
-        groupCheckbox.checked = true;
-      }
-
-      if (data.minGroupTabs !== undefined) {
-        minTabsEl.value = data.minGroupTabs;
-      } else {
-        minTabsEl.value = 5;
-      }
-
-      // Sync with background script state
-      chrome.runtime.sendMessage({ type: "GET_STATUS" }, (response) => {
-        if (chrome.runtime.lastError) {
-          setStatus("Idle", "idle");
-          return;
-        }
-
-        if (response && response.isRunning) {
-          isRunning = true;
-          stopBtn.disabled = false;
-
-          const remainingMs = response.endTime - Date.now();
-          const remainingMins = Math.ceil(remainingMs / 60000);
-
-          // Check for stuck timer
-          if (remainingMins <= 0 && response.endTime) {
-            console.warn("[Popup] Detected stuck timer, attempting recovery");
-            chrome.runtime.sendMessage({ type: "FORCE_RESET" });
-            setStatus("🔄 Recovering...", "idle", "System reset");
-            setTimeout(() => {
-              isRunning = false;
-              stopBtn.disabled = true;
-              setStatus("Idle", "idle", "Auto-starts at 10+ tabs");
-            }, 1000);
-          } else if (remainingMins > 0) {
-            setStatus(
-              `⏳ Timer Active`,
-              "running",
-              `${remainingMins} min remaining`
-            );
-          } else {
-            setStatus(
-              "⏳ Timer Active",
-              "running",
-              "Checking inactive tabs..."
-            );
-          }
-        } else {
-          isRunning = false;
-          stopBtn.disabled = true;
-          setStatus("Idle", "idle", "Auto-starts at 10+ tabs");
-        }
-      });
+      initializePopupState(data);
     }
   );
 
-  // Auto-save slider changes
+  function initializePopupState(data) {
+    if (data[STORAGE_KEYS.minutes]) {
+      sliderEl.value = data[STORAGE_KEYS.minutes];
+      displayEl.textContent = data[STORAGE_KEYS.minutes] + " mins";
+    } else {
+      sliderEl.value = 30;
+      displayEl.textContent = "30 mins";
+    }
+
+    if (data[STORAGE_KEYS.autoGroup] !== undefined) {
+      groupCheckbox.checked = data[STORAGE_KEYS.autoGroup];
+    } else {
+      groupCheckbox.checked = true;
+    }
+
+    if (data.minGroupTabs !== undefined) {
+      minTabsEl.value = data.minGroupTabs;
+    } else {
+      minTabsEl.value = 5;
+    }
+
+    syncWithBackground();
+  }
+
+  function syncWithBackground(retryCount = 0) {
+    chrome.runtime.sendMessage({ type: "GET_STATUS" }, (response) => {
+      if (chrome.runtime.lastError) {
+        console.warn("[Popup] Could not get status:", chrome.runtime.lastError);
+
+        if (retryCount < 3) {
+          const delay = Math.pow(2, retryCount) * 500;
+          console.log(
+            `[Popup] Retrying in ${delay}ms (attempt ${retryCount + 1}/3)`
+          );
+          setTimeout(() => syncWithBackground(retryCount + 1), delay);
+        } else {
+          setStatus("Idle", "idle", "Auto-starts at 10+ tabs");
+          updateInactiveCount();
+        }
+        return;
+      }
+
+      if (response && response.isRunning) {
+        isRunning = true;
+        stopBtn.disabled = false;
+
+        const remainingMs = response.endTime - Date.now();
+        const remainingMins = Math.ceil(remainingMs / 60000);
+
+        if (remainingMins <= 0 && response.endTime) {
+          console.warn("[Popup] Detected stuck timer, attempting recovery");
+          chrome.runtime.sendMessage({ type: "FORCE_RESET" });
+          setStatus("🔄 Recovering...", "idle", "System reset");
+          setTimeout(() => {
+            isRunning = false;
+            stopBtn.disabled = true;
+            setStatus("Idle", "idle", "Auto-starts at 10+ tabs");
+            updateInactiveCount();
+          }, 1000);
+        } else if (remainingMins > 0) {
+          setStatus(
+            `⏳ Timer Active`,
+            "running",
+            `${remainingMins} min remaining`
+          );
+        } else {
+          setStatus("⏳ Timer Active", "running", "Checking inactive tabs...");
+        }
+      } else {
+        isRunning = false;
+        stopBtn.disabled = true;
+        setStatus("Idle", "idle", "Auto-starts at 10+ tabs");
+      }
+
+      updateInactiveCount();
+    });
+  }
+
   sliderEl.addEventListener("input", () => {
     displayEl.textContent = sliderEl.value + " mins";
   });
@@ -214,7 +275,6 @@ document.addEventListener("DOMContentLoaded", () => {
     });
   });
 
-  // Auto-save min tabs changes
   minTabsEl.addEventListener("change", () => {
     const value = parseInt(minTabsEl.value, 10);
     if (value >= 1 && value <= 20) {
@@ -231,7 +291,6 @@ document.addEventListener("DOMContentLoaded", () => {
     }
   });
 
-  // Auto-save checkbox changes
   groupCheckbox.addEventListener("change", () => {
     const checked = groupCheckbox.checked;
     chrome.storage.local.set({ [STORAGE_KEYS.autoGroup]: checked }, () => {
@@ -246,7 +305,6 @@ document.addEventListener("DOMContentLoaded", () => {
     });
   });
 
-  // STOP BUTTON
   stopBtn.addEventListener("click", () => {
     chrome.runtime.sendMessage({ type: "STOP" });
 
@@ -259,7 +317,6 @@ document.addEventListener("DOMContentLoaded", () => {
     }, 2000);
   });
 
-  // GROUP NOW BUTTON
   groupNowBtn.addEventListener("click", () => {
     const minutes = parseInt(sliderEl.value, 10);
 
@@ -270,13 +327,11 @@ document.addEventListener("DOMContentLoaded", () => {
 
     setStatus("📂 Grouping...", "running", "Please wait");
 
-    // Update count after a delay
     setTimeout(() => {
       updateInactiveCount();
     }, 1500);
   });
 
-  // RECEIVE MESSAGES FROM BACKGROUND
   chrome.runtime.onMessage.addListener((message) => {
     console.log("Popup received:", message);
 
@@ -285,6 +340,7 @@ document.addEventListener("DOMContentLoaded", () => {
         isRunning = true;
         stopBtn.disabled = false;
         setStatus("⏳ Timer Active", "running", "Auto-grouping enabled");
+        updateInactiveCount();
         break;
 
       case "NOT_ENOUGH_TABS":
@@ -350,12 +406,34 @@ document.addEventListener("DOMContentLoaded", () => {
     }
   });
 
-  // Helper to update status with description
   function setStatus(text, state, description = "") {
     if (!statusEl) return;
 
-    statusEl.textContent = text;
-    statusEl.className = ""; // reset
+    // Map emoji to icon paths
+    const iconMap = {
+      "🔄": "../icons/loading.png",
+      "⏳": "../icons/sand-clock.png",
+      "🛑": "../icons/stop-button.png",
+      // ℹ️: "../icons/info.png",
+      "📂": "../icons/folder(1).png",
+      "✅": "../icons/check.png",
+      "⚠️": "../icons/warning.png",
+    };
+
+    // Replace emoji with icon if found
+    let displayText = text;
+    for (const [emoji, iconPath] of Object.entries(iconMap)) {
+      if (text.includes(emoji)) {
+        displayText = text.replace(
+          emoji,
+          `<img src="${iconPath}" alt="${emoji}" style="width: 16px; height: 16px; vertical-align: middle; margin-right: 4px;">`
+        );
+        break;
+      }
+    }
+
+    statusEl.innerHTML = displayText;
+    statusEl.className = "";
     if (state) statusEl.classList.add(state);
 
     if (description && statusDescEl) {
@@ -363,6 +441,5 @@ document.addEventListener("DOMContentLoaded", () => {
     }
   }
 
-  // Update inactive count periodically
   setInterval(updateInactiveCount, 5000);
 });

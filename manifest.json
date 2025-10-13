@@ -4,14 +4,14 @@
   "version": "1.0.0",
   "description": "Groups inactive tabs into a 'Tabflow' group after user starts the timer.",
   "icons": {
-    "16": "icons/icon-16px.png",
-    "48": "icons/icon-48px.png",
-    "128": "icons/icon-128px.png"
+    "16": "icons/tabflow16.png",
+    "48": "icons/tabflow64.png",
+    "128": "icons/tabflow128.png"
   },
   "action": {
     "default_popup": "popup/popup.html",
     "default_icon": {
-      "48": "icons/icon-48px.png"
+      "48": "icons/tabflow64.png"
     }
   },
   "background": {
