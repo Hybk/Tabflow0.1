@@ -6,13 +6,11 @@ async function updateInactiveCount() {
   try {
     const sessionData = await chrome.storage.local.get("sessionReady");
     if (!sessionData.sessionReady) {
-      console.log("[Popup] Session not ready, skipping count update");
       const countEl = document.getElementById("inactiveCount");
       if (countEl) countEl.textContent = "0";
       return;
     }
 
-    // First try to find the group by name
     let groupId = null;
     try {
       const groups = await chrome.tabGroups.query({});
@@ -21,11 +19,9 @@ async function updateInactiveCount() {
       if (inactiveGroup) {
         groupId = inactiveGroup.id;
       } else {
-        // Fallback to stored ID
         groupId = await getInactiveGroupId();
       }
     } catch (err) {
-      console.warn("Error finding group:", err);
       groupId = await getInactiveGroupId();
     }
 
@@ -47,7 +43,6 @@ async function updateInactiveCount() {
       }
     }
   } catch (err) {
-    console.warn("Error updating inactive count:", err);
     const countEl = document.getElementById("inactiveCount");
     if (countEl) countEl.textContent = "0";
   }
@@ -64,7 +59,6 @@ function initOnboarding() {
   const mainPopupEl = document.getElementById("mainPopup");
 
   if (!onboardingEl || !mainPopupEl) {
-    console.error("Onboarding or main popup element not found");
     return;
   }
 
@@ -127,7 +121,6 @@ document.addEventListener("DOMContentLoaded", () => {
       if (mainPopupEl) mainPopupEl.style.display = "block";
 
       if (data.sessionReady) {
-        // Wait a bit longer for group validation to complete
         setTimeout(() => {
           updateInactiveCount();
         }, 800);
@@ -162,7 +155,6 @@ document.addEventListener("DOMContentLoaded", () => {
     ],
     (data) => {
       if (!data.sessionReady) {
-        console.log("[Popup] Session not ready yet, waiting...");
         setStatus("🔄 Starting...", "idle", "Initializing extension");
 
         setTimeout(() => {
@@ -206,13 +198,8 @@ document.addEventListener("DOMContentLoaded", () => {
   function syncWithBackground(retryCount = 0) {
     chrome.runtime.sendMessage({ type: "GET_STATUS" }, (response) => {
       if (chrome.runtime.lastError) {
-        console.warn("[Popup] Could not get status:", chrome.runtime.lastError);
-
         if (retryCount < 3) {
           const delay = Math.pow(2, retryCount) * 500;
-          console.log(
-            `[Popup] Retrying in ${delay}ms (attempt ${retryCount + 1}/3)`
-          );
           setTimeout(() => syncWithBackground(retryCount + 1), delay);
         } else {
           setStatus("Idle", "idle", "Auto-starts at 10+ tabs");
@@ -229,7 +216,6 @@ document.addEventListener("DOMContentLoaded", () => {
         const remainingMins = Math.ceil(remainingMs / 60000);
 
         if (remainingMins <= 0 && response.endTime) {
-          console.warn("[Popup] Detected stuck timer, attempting recovery");
           chrome.runtime.sendMessage({ type: "FORCE_RESET" });
           setStatus("🔄 Recovering...", "idle", "System reset");
           setTimeout(() => {
@@ -333,8 +319,6 @@ document.addEventListener("DOMContentLoaded", () => {
   });
 
   chrome.runtime.onMessage.addListener((message) => {
-    console.log("Popup received:", message);
-
     switch (message.type) {
       case "TIMER_STARTED":
         isRunning = true;
@@ -402,7 +386,7 @@ document.addEventListener("DOMContentLoaded", () => {
         break;
 
       default:
-        console.warn("Unknown message:", message);
+      // Unknown message type
     }
   });
 
@@ -414,7 +398,6 @@ document.addEventListener("DOMContentLoaded", () => {
       "🔄": "../icons/loading.png",
       "⏳": "../icons/sand-clock.png",
       "🛑": "../icons/stop-button.png",
-      // ℹ️: "../icons/info.png",
       "📂": "../icons/folder(1).png",
       "✅": "../icons/check.png",
       "⚠️": "../icons/warning.png",
@@ -439,6 +422,17 @@ document.addEventListener("DOMContentLoaded", () => {
     if (description && statusDescEl) {
       statusDescEl.textContent = description;
     }
+  }
+
+  // Bug report link handler
+  const bugReportLink = document.getElementById("bugReportLink");
+  if (bugReportLink) {
+    bugReportLink.addEventListener("click", (e) => {
+      e.preventDefault();
+      chrome.tabs.create({
+        url: "https://forms.gle/Mx6HRs8TEbAbMSzY9",
+      });
+    });
   }
 
   setInterval(updateInactiveCount, 5000);

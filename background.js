@@ -8,14 +8,13 @@ let isGrouping = false;
 const tabStates = {};
 let ungroupQueue = new Map();
 let isProcessingUngroup = false;
-const UNGROUP_DELAY = 5000;
+const UNGROUP_DELAY = 10000; // 10 seconds
 
 // UTIL HELPERS
 function clearTimer() {
   chrome.alarms.clear("inactiveTimer");
   isRunning = false;
   endTime = null;
-  console.log("[Timer] Cleared (inactiveTimer)");
 }
 
 function notifyPopup(message) {
@@ -37,7 +36,6 @@ function getStatus() {
 
 // Initialize tab states immediately on startup
 async function initializeTabStates(existingInactiveGroupId = null) {
-  console.log("[Init] Initializing tab states...");
   const now = Date.now();
 
   try {
@@ -49,23 +47,17 @@ async function initializeTabStates(existingInactiveGroupId = null) {
       try {
         const window = await chrome.windows.get(tab.windowId);
         if (window.type === "normal") {
-          // Check if tab is in the "Inactive Tabs" group
           const isInInactiveGroup =
             existingInactiveGroupId && tab.groupId === existingInactiveGroupId;
 
           if (isInInactiveGroup) {
-            // Tab is already grouped - give it a very old timestamp so it stays grouped
             tabStates[tab.id] = {
-              lastAccessed: now - 365 * 24 * 60 * 60 * 1000, // 1 year ago
+              lastAccessed: now - 365 * 24 * 60 * 60 * 1000,
               isHidden: false,
               isActive: false,
             };
             groupedTabCount++;
-            console.log(
-              `[Init] Tab ${tab.id} is in "Inactive Tabs" group - preserving`
-            );
           } else {
-            // Regular ungrouped tab  (fresh start)
             tabStates[tab.id] = {
               lastAccessed: now,
               isHidden: false,
@@ -75,22 +67,17 @@ async function initializeTabStates(existingInactiveGroupId = null) {
           }
         }
       } catch (err) {
-        console.warn(`[Init] Could not get window for tab ${tab.id}`);
+        // Skip tab if window check fails
       }
     }
-
-    console.log(
-      `[Init] Initialized ${normalTabCount} ungrouped tabs, preserved ${groupedTabCount} grouped tabs`
-    );
   } catch (err) {
-    console.error("[Init] Error initializing tab states:", err);
+    // Handle initialization error silently
   }
 }
 
 // GROUP INACTIVE TABS
 async function groupInactiveTabs(minutes) {
   if (isGrouping) {
-    console.log("[Group] Already grouping, skipping duplicate call");
     notifyPopup({ type: "ERROR", message: "Grouping already in progress" });
     return;
   }
@@ -98,9 +85,6 @@ async function groupInactiveTabs(minutes) {
   isGrouping = true;
 
   const timeoutId = setTimeout(() => {
-    console.error(
-      "[Group] Operation timed out after 30 seconds, force unlocking"
-    );
     isGrouping = false;
     notifyPopup({
       type: "ERROR",
@@ -112,7 +96,6 @@ async function groupInactiveTabs(minutes) {
     const now = Date.now();
     const tabs = await chrome.tabs.query({});
 
-    // Filter tabs to only include those in normal windows
     const normalTabs = [];
     for (const tab of tabs) {
       try {
@@ -121,11 +104,10 @@ async function groupInactiveTabs(minutes) {
           normalTabs.push(tab);
         }
       } catch (err) {
-        console.warn(`[Group] Could not get window for tab ${tab.id}`);
+        // Skip tab
       }
     }
 
-    // Update tabStates for all normal tabs
     for (const t of normalTabs) {
       if (!tabStates[t.id]) {
         tabStates[t.id] = {
@@ -134,14 +116,12 @@ async function groupInactiveTabs(minutes) {
           isActive: t.active,
         };
       }
-      // Update active tab's last accessed time
       if (t.active) {
         tabStates[t.id].lastAccessed = now;
         tabStates[t.id].isActive = true;
       }
     }
 
-    // Find inactive tabs (only from normal windows)
     const inactiveTabs = normalTabs.filter((t) => {
       const state = tabStates[t.id];
       if (!state) return false;
@@ -152,17 +132,10 @@ async function groupInactiveTabs(minutes) {
       return !t.active && !t.pinned && !t.audible && isInactive;
     });
 
-    console.log(
-      `[Group] Found ${inactiveTabs.length} inactive tabs after ${minutes} min`
-    );
-
     const stored = await chrome.storage.local.get("minGroupTabs");
     const minGroupTabs = stored.minGroupTabs || 5;
 
     if (inactiveTabs.length < minGroupTabs) {
-      console.log(
-        `[Group] Not enough inactive tabs (need at least ${minGroupTabs})`
-      );
       notifyPopup({ type: "NOT_ENOUGH_TABS", required: minGroupTabs });
       clearTimeout(timeoutId);
       return;
@@ -172,11 +145,9 @@ async function groupInactiveTabs(minutes) {
 
     const ids = inactiveTabs.map((t) => t.id);
 
-    // Check stored group ID first
     let targetGroupId = await getInactiveGroupId();
     targetGroupId = await validateGroupId(targetGroupId);
 
-    // If no valid stored group, search for existing group
     if (!targetGroupId) {
       const groups = await chrome.tabGroups.query({});
       const existing = groups.find((g) => g.title === "Inactive Tabs");
@@ -184,13 +155,9 @@ async function groupInactiveTabs(minutes) {
       if (existing) {
         targetGroupId = existing.id;
         await saveInactiveGroupId(targetGroupId);
-        console.log(
-          `[Group] Found existing "Inactive Tabs" group (${targetGroupId})`
-        );
       }
     }
 
-    // Create new group if still none found
     if (!targetGroupId) {
       targetGroupId = await chrome.tabs.group({ tabIds: [ids[0]] });
       await chrome.tabGroups.update(targetGroupId, {
@@ -199,19 +166,11 @@ async function groupInactiveTabs(minutes) {
       });
       await saveInactiveGroupId(targetGroupId);
       ids.shift();
-      console.log(
-        `[Group] Created new "Inactive Tabs" group (${targetGroupId})`
-      );
     }
 
-    // Add remaining inactive tabs into the group
     if (ids.length > 0) {
       await chrome.tabs.group({ groupId: targetGroupId, tabIds: ids });
     }
-
-    console.log(
-      `[Group] Grouped ${inactiveTabs.length} tabs into "Inactive Tabs"`
-    );
 
     inactiveTabs.forEach((t) => {
       tabStates[t.id].isHidden = false;
@@ -225,7 +184,6 @@ async function groupInactiveTabs(minutes) {
     });
   } catch (err) {
     clearTimeout(timeoutId);
-    console.error("[Error in groupInactiveTabs]", err);
     notifyPopup({ type: "ERROR", message: err.message });
   } finally {
     isGrouping = false;
@@ -235,7 +193,6 @@ async function groupInactiveTabs(minutes) {
 // AUTO START TIMER
 function autoStartTimer(minutes) {
   if (isRunning) {
-    console.log("[AutoStart] Timer already running, skipping");
     return;
   }
 
@@ -245,14 +202,12 @@ function autoStartTimer(minutes) {
   endTime = Date.now() + minutes * 60 * 1000;
   isRunning = true;
 
-  console.log(`[AutoStart] Timer started for ${minutes} min`);
   chrome.alarms.create("inactiveTimer", { delayInMinutes: minutes });
   notifyPopup({ type: "TIMER_STARTED", minutes });
 }
 
 // AUTO STOP TIMER
 function autoStopTimer() {
-  console.log("[AutoStop] Stopping timer");
   clearTimer();
   notifyPopup({ type: "STOPPED" });
 }
@@ -268,18 +223,11 @@ function cleanupTabStates() {
         delete tabStates[tabId];
       }
     });
-
-    console.log(
-      `[Cleanup] Removed ${
-        stateKeys.length - Object.keys(tabStates).length
-      } closed tabs from state`
-    );
   });
 }
 
 async function saveInactiveGroupId(groupId) {
   await chrome.storage.local.set({ inactiveGroupId: groupId });
-  console.log(`[Storage] Saved inactive group ID: ${groupId}`);
 }
 
 async function getInactiveGroupId() {
@@ -296,7 +244,7 @@ async function validateGroupId(groupId) {
       return groupId;
     }
   } catch (err) {
-    console.log(`[Validate] Group ${groupId} no longer exists`);
+    // Group no longer exists
   }
 
   await chrome.storage.local.remove("inactiveGroupId");
@@ -305,16 +253,14 @@ async function validateGroupId(groupId) {
 
 async function handleGroupNow(minutes) {
   if (isGrouping) {
-    console.log("[GroupNow] Already grouping, ignoring");
     notifyPopup({ type: "ERROR", message: "Grouping already in progress" });
     return;
   }
 
-  console.log(`[GroupNow] Manual trigger. Minutes=${minutes}`);
   await groupInactiveTabs(minutes);
 }
 
-// Process ungroup queue with 5 second delay
+// Process ungroup queue with 10 second delay
 async function processUngroupQueue() {
   if (isProcessingUngroup) return;
 
@@ -322,42 +268,47 @@ async function processUngroupQueue() {
   const now = Date.now();
 
   try {
+    const toDelete = [];
+
     for (const [tabId, activatedTime] of ungroupQueue.entries()) {
+      // Check if 10 seconds have passed since tab was first activated
       if (now - activatedTime >= UNGROUP_DELAY) {
         try {
           if (autoUngroup) {
             const tab = await chrome.tabs.get(tabId);
-            const groupId = tab.groupId;
 
-            if (groupId && groupId !== -1) {
-              const group = await chrome.tabGroups.get(groupId);
+            // Verify the tab is still active before ungrouping
+            if (tab.active) {
+              const groupId = tab.groupId;
 
-              if (group && group.title === "Inactive Tabs") {
-                await chrome.tabs.ungroup([tabId]);
-                console.log(
-                  `[Ungroup] Tab ${tabId} removed from "Inactive Tabs" after 5s delay`
-                );
+              if (groupId && groupId !== -1) {
+                const group = await chrome.tabGroups.get(groupId);
 
-                const remaining = await chrome.tabs.query({ groupId });
-                if (remaining.length > 0) {
-                  await chrome.tabGroups.update(groupId, { collapsed: true });
-                  console.log(
-                    `[Ungroup] Group ${groupId} collapsed (${remaining.length} tabs remaining)`
-                  );
+                if (group && group.title === "Inactive Tabs") {
+                  await chrome.tabs.ungroup([tabId]);
+
+                  const remaining = await chrome.tabs.query({ groupId });
+                  if (remaining.length > 0) {
+                    await chrome.tabGroups.update(groupId, { collapsed: true });
+                  }
                 }
               }
+            } else {
+              // Tab is no longer active, remove from queue without ungrouping
+              toDelete.push(tabId);
             }
           }
-
-          ungroupQueue.delete(tabId);
+          toDelete.push(tabId);
         } catch (err) {
-          console.warn(`[Ungroup] Error processing tab ${tabId}:`, err.message);
-          ungroupQueue.delete(tabId);
+          toDelete.push(tabId);
         }
       }
     }
+
+    // Remove processed tabs from queue
+    toDelete.forEach((tabId) => ungroupQueue.delete(tabId));
   } catch (err) {
-    console.error("[Ungroup] Queue processing error:", err);
+    // Handle queue processing error
   } finally {
     isProcessingUngroup = false;
   }
@@ -377,13 +328,11 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
         await handleGroupNow(msg.minutes || currentMinutes || 30);
         break;
       case "FORCE_RESET":
-        console.log("[Force Reset] Clearing all state and resetting extension");
         clearTimer();
         isGrouping = false;
         isProcessingUngroup = false;
         ungroupQueue.clear();
 
-        // Find inactive group before reinitializing
         let resetGroupId = null;
         try {
           const groups = await chrome.tabGroups.query({});
@@ -392,7 +341,7 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
             resetGroupId = inactiveGroup.id;
           }
         } catch (err) {
-          console.error("[Force Reset] Error finding group:", err);
+          // Handle error silently
         }
 
         await initializeTabStates(resetGroupId);
@@ -406,7 +355,7 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
         sendResponse({ success: true });
         break;
       default:
-        console.warn("[Message] Unknown type", msg.type);
+      // Unknown message type
     }
   })();
   return true;
@@ -414,8 +363,6 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
 
 // Auto checker - runs every 2 minutes
 chrome.runtime.onInstalled.addListener(async () => {
-  console.log("[Extension] Installed/Updated - Full initialization...");
-
   isRunning = false;
   endTime = null;
   currentMinutes = 0;
@@ -426,7 +373,6 @@ chrome.runtime.onInstalled.addListener(async () => {
 
   await chrome.alarms.clearAll();
 
-  // First, find and validate the inactive group BEFORE initializing tab states
   let validGroupId = null;
   try {
     const groups = await chrome.tabGroups.query({});
@@ -435,18 +381,12 @@ chrome.runtime.onInstalled.addListener(async () => {
     if (inactiveGroup) {
       validGroupId = inactiveGroup.id;
       await saveInactiveGroupId(validGroupId);
-
-      const groupedTabs = await chrome.tabs.query({ groupId: validGroupId });
-      console.log(
-        `[Install] Found existing "Inactive Tabs" group (${validGroupId}) with ${groupedTabs.length} tabs`
-      );
     } else {
-      // Check stored ID as fallback
       const storedGroupId = await getInactiveGroupId();
       validGroupId = await validateGroupId(storedGroupId);
     }
   } catch (err) {
-    console.error("[Install] Error finding inactive group:", err);
+    // Handle error silently
   }
 
   await initializeTabStates(validGroupId);
@@ -459,13 +399,9 @@ chrome.runtime.onInstalled.addListener(async () => {
     sessionReady: true,
     sessionStartTime: Date.now(),
   });
-
-  console.log("[Install] Extension ready");
 });
 
 chrome.runtime.onStartup.addListener(async () => {
-  console.log("[Extension] Browser started - Full reset and initialization...");
-
   isRunning = false;
   endTime = null;
   currentMinutes = 0;
@@ -480,14 +416,6 @@ chrome.runtime.onStartup.addListener(async () => {
   const storedGroupId = await getInactiveGroupId();
   const validGroupId = await validateGroupId(storedGroupId);
 
-  if (validGroupId) {
-    console.log(
-      `[Startup] Found existing "Inactive Tabs" group (${validGroupId})`
-    );
-  } else {
-    console.log("[Startup] No existing inactive group found");
-  }
-
   chrome.alarms.create("autoChecker", { periodInMinutes: 2 });
   chrome.alarms.create("cleanupStates", { periodInMinutes: 10 });
   chrome.alarms.create("ungroupProcessor", { periodInMinutes: 0.1 });
@@ -496,13 +424,10 @@ chrome.runtime.onStartup.addListener(async () => {
     sessionReady: true,
     sessionStartTime: Date.now(),
   });
-
-  console.log("[Startup] Extension ready - fresh session started");
 });
 
 chrome.alarms.onAlarm.addListener(async (alarm) => {
   if (alarm.name === "inactiveTimer") {
-    console.log("[Alarm] inactiveTimer triggered, grouping inactive tabs...");
     await groupInactiveTabs(currentMinutes);
     clearTimer();
   }
@@ -511,7 +436,6 @@ chrome.alarms.onAlarm.addListener(async (alarm) => {
     try {
       const allTabs = await chrome.tabs.query({});
 
-      // Only count tabs in normal windows
       const normalTabsPromises = allTabs.map(async (tab) => {
         try {
           const window = await chrome.windows.get(tab.windowId);
@@ -539,25 +463,15 @@ chrome.alarms.onAlarm.addListener(async (alarm) => {
       const minutes = stored.minutes || 30;
       const minGroupTabs = stored.minGroupTabs || 5;
 
-      console.log(
-        `[AutoChecker] Ungrouped tabs: ${countableTabs.length}, running: ${isRunning}`
-      );
-
       if (countableTabs.length >= 10 && !isRunning) {
-        console.log(
-          "[AutoChecker] ≥10 ungrouped tabs detected. Auto-starting timer..."
-        );
         autoStartTimer(minutes);
       }
 
       if (countableTabs.length < minGroupTabs && isRunning) {
-        console.log(
-          `[AutoChecker] <${minGroupTabs} ungrouped tabs detected. Auto-stopping...`
-        );
         autoStopTimer();
       }
     } catch (err) {
-      console.warn("[AutoChecker] Error:", err.message);
+      // Handle error silently
     }
   }
 
@@ -593,21 +507,19 @@ chrome.tabs.onActivated.addListener(async (info) => {
       const group = await chrome.tabGroups.get(tab.groupId);
 
       if (group && group.title === "Inactive Tabs") {
-        ungroupQueue.set(tabId, now);
-        console.log(
-          `[Tab Active] Tab ${tabId} in "Inactive Tabs" - added to ungroup queue (will process in 5s)`
-        );
+        // Only add to queue if not already there (don't reset timer)
+        if (!ungroupQueue.has(tabId)) {
+          ungroupQueue.set(tabId, now);
+        }
       }
     }
   } catch (err) {
-    console.warn(
-      `[Tab Active] Error checking group for tab ${tabId}:`,
-      err.message
-    );
+    // Handle error silently
   }
 });
 
 chrome.tabs.onUpdated.addListener((tabId, changeInfo, tab) => {
+  // Update tab state on page load/navigation
   if (changeInfo.status === "complete" || changeInfo.url) {
     const now = Date.now();
     if (tabStates[tabId]) {
@@ -620,12 +532,16 @@ chrome.tabs.onUpdated.addListener((tabId, changeInfo, tab) => {
       };
     }
   }
+
+  // Remove from ungroup queue if tab becomes inactive while loading
+  if (changeInfo.active === false && ungroupQueue.has(tabId)) {
+    ungroupQueue.delete(tabId);
+  }
 });
 
 chrome.tabs.onRemoved.addListener((tabId) => {
   if (tabStates[tabId]) {
     delete tabStates[tabId];
-    console.log(`[TabState] Removed state for closed tab ${tabId}`);
   }
 
   ungroupQueue.delete(tabId);
@@ -635,13 +551,10 @@ chrome.tabGroups.onRemoved.addListener(async (group) => {
   const storedId = await getInactiveGroupId();
   if (storedId === group.id) {
     await chrome.storage.local.remove("inactiveGroupId");
-    console.log(`[Group] "Inactive Tabs" group removed, cleared storage`);
   }
 });
 
 chrome.runtime.onSuspend.addListener(async () => {
-  console.log("[Suspend] Cleaning up and resetting state...");
-
   clearTimer();
   isGrouping = false;
   isProcessingUngroup = false;
@@ -652,6 +565,4 @@ chrome.runtime.onSuspend.addListener(async () => {
     sessionClean: true,
     lastCloseTime: Date.now(),
   });
-
-  console.log("[Suspend] Extension state reset complete");
 });
